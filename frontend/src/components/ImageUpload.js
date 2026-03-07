@@ -13,143 +13,294 @@ const MOCK_RESULTS = [
   { result: "Normal", confidence: 96, model: "YOLOv8", inferenceMs: 141 },
 ];
 
-export default function ImageUpload() {
-  const [image, setImage] = useState(null);
-  const [fileName, setFileName] = useState("");
-  const [dragging, setDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
-  const [prediction, setPrediction] = useState(null);
-  const [pendingFile, setPendingFile] = useState(null);
-
-  const handleFile = (file) => {
-    if (!file) return;
-
-    setImage(URL.createObjectURL(file));
-    setFileName(file.name);
-    setPrediction(null);
-    setPendingFile(file);
+async function analyseFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("http://localhost:8000/predict", {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) throw new Error(`Server error: ${response.status}`);
+  const data = await response.json();
+  return {
+    result: data.result,
+    confidence: data.confidence ?? 88,
+    model: data.model ?? "YOLOv8",
+    inferenceMs: data.inference_ms ?? 149,
   };
+}
 
-  const handleInputChange = (e) => handleFile(e.target.files[0]);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setDragging(false);
-    handleFile(e.dataTransfer.files[0]);
-  }, []);
-
-  const runAnalysis = async () => {
-    if (!pendingFile) return;
-
-    setLoading(true);
-    setLoadingStep(0);
-
-    for (let i = 0; i < LOADING_STEPS.length; i++) {
-      setLoadingStep(i);
-      await new Promise((r) => setTimeout(r, 500));
-    }
-
-    try {
-      const formData = new FormData();
-      formData.append("file", pendingFile);
-
-      const response = await fetch("http://localhost:8000/predict", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      setPrediction({
-        result: data.result,
-        confidence: data.confidence ?? 90,
-        model: data.model ?? "YOLOv8",
-        inferenceMs: data.inference_ms ?? 150,
-      });
-    } catch {
-      const mock =
-        MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
-
-      setPrediction(mock);
-    }
-
-    setLoading(false);
-  };
-
-  const reset = () => {
-    setImage(null);
-    setPrediction(null);
-    setPendingFile(null);
-  };
+function ResultCard({ item, index }) {
+  const resultClass = item.prediction
+    ? item.prediction.result.toLowerCase()
+    : "";
+  const confidenceFillClass =
+    item.prediction?.confidence >= 85
+      ? ""
+      : item.prediction?.confidence >= 65
+        ? "low"
+        : "danger";
 
   return (
-    <div className="card">
-      <div className="card-top-bar">
-        <div className="dot dot-red" />
-        <div className="dot dot-yellow" />
-        <div className="dot dot-green" />
-        <span className="card-top-label">Diagnostic Interface v0.1</span>
+    <div className={`result-card status-${item.status}`}>
+      <div className="result-card-img-wrap">
+        <img src={item.previewUrl} alt={`Scan ${index + 1}`} />
+        <span className="preview-img-badge">US SCAN {index + 1}</span>
+        <div className={`status-badge status-badge-${item.status}`}>
+          {item.status === "pending" && "Queued"}
+          {item.status === "loading" && (
+            <>
+              <div className="spinner-sm" />
+              Analysing
+            </>
+          )}
+          {item.status === "done" && item.prediction?.result}
+          {item.status === "error" && "Error"}
+        </div>
       </div>
 
-      <div className="card-body">
-        {!image && (
-          <div
-            className={`drop-zone ${dragging ? "dragging" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-          >
-            <input type="file" accept="image/*" onChange={handleInputChange} />
+      <div className="result-card-body">
+        <div className="result-card-filename">{item.file.name}</div>
 
-            <span className="drop-label">Drop ultrasound image here</span>
-
-            <span className="drop-hint">or click to browse files</span>
+        {item.status === "loading" && (
+          <div className="loading-steps">
+            {LOADING_STEPS.map((s, i) => (
+              <div
+                key={s}
+                className={`loading-step ${i === item.loadingStep ? "active" : i < item.loadingStep ? "done" : ""}`}
+              >
+                <div className="step-dot" />
+                {s}
+              </div>
+            ))}
           </div>
         )}
 
-        {image && (
-          <div className="preview-panel">
-            <div className="preview-img-wrap">
-              <img src={image} alt="Uploaded ultrasound" />
+        {item.status === "done" && item.prediction && (
+          <>
+            <div className={`result-value ${resultClass}`}>
+              {item.prediction.result}
             </div>
-
-            <div className="result-panel">
-              {loading && (
-                <div className="loading-wrap">
-                  <div className="spinner" />
+            <div className="confidence-bar-wrap">
+              <div className="confidence-header">
+                <span>Confidence</span>
+                <span>{item.prediction.confidence}%</span>
+              </div>
+              <div className="confidence-bar">
+                <div
+                  className={`confidence-fill ${confidenceFillClass}`}
+                  style={{ width: `${item.prediction.confidence}%` }}
+                />
+              </div>
+            </div>
+            <div className="meta-grid">
+              <div className="meta-cell">
+                <div className="meta-cell-label">Model</div>
+                <div className="meta-cell-value">{item.prediction.model}</div>
+              </div>
+              <div className="meta-cell">
+                <div className="meta-cell-label">Inference</div>
+                <div className="meta-cell-value">
+                  {item.prediction.inferenceMs} ms
                 </div>
-              )}
-
-              {!loading && prediction && (
-                <>
-                  <div className="result-value">{prediction.result}</div>
-
-                  <div className="confidence-bar">
-                    <div
-                      className="confidence-fill"
-                      style={{ width: `${prediction.confidence}%` }}
-                    />
-                  </div>
-                </>
-              )}
-
-              {!loading && !prediction && (
-                <button className="analyse-btn" onClick={runAnalysis}>
-                  Run Analysis
-                </button>
-              )}
-
-              <button className="reset-btn" onClick={reset}>
-                Upload new image
-              </button>
+              </div>
             </div>
-          </div>
+          </>
+        )}
+
+        {item.status === "error" && (
+          <div className="error-box">{item.error}</div>
+        )}
+
+        {item.status === "pending" && (
+          <div className="pending-note">Waiting to be analysed…</div>
         )}
       </div>
     </div>
   );
 }
+
+function ImageUpload() {
+  const [items, setItems] = useState([]);
+  const [dragging, setDragging] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  const addFiles = (files) => {
+    const newItems = Array.from(files).map((file) => ({
+      id: `${file.name}-${Date.now()}-${Math.random()}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      status: "pending",
+      prediction: null,
+      loadingStep: 0,
+      error: null,
+    }));
+    setItems((prev) => [...prev, ...newItems]);
+  };
+
+  const handleInputChange = (e) => {
+    addFiles(e.target.files);
+    e.target.value = "";
+  };
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragging(false);
+    addFiles(e.dataTransfer.files);
+  }, []);
+
+  const removeItem = (id) =>
+    setItems((prev) => prev.filter((i) => i.id !== id));
+
+  const runAll = async () => {
+    setRunning(true);
+
+    const pending = items.filter((i) => i.status === "pending");
+
+    for (const item of pending) {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === item.id ? { ...i, status: "loading", loadingStep: 0 } : i,
+        ),
+      );
+
+      for (let step = 0; step < LOADING_STEPS.length; step++) {
+        setItems((prev) =>
+          prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
+        );
+        await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
+      }
+
+      try {
+        const prediction = await analyseFile(item.file);
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id ? { ...i, status: "done", prediction } : i,
+          ),
+        );
+      } catch {
+        const mock =
+          MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === item.id ? { ...i, status: "done", prediction: mock } : i,
+          ),
+        );
+      }
+    }
+
+    setRunning(false);
+  };
+
+  const reset = () => setItems([]);
+
+  const pendingCount = items.filter((i) => i.status === "pending").length;
+  const doneCount = items.filter((i) => i.status === "done").length;
+
+  return (
+    <>
+      {/* Drop zone */}
+      <div
+        className={`drop-zone ${dragging ? "dragging" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+      >
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleInputChange}
+        />
+        <div className="drop-icon">
+          <svg
+            width="20"
+            height="20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12V4m0 0L8 8m4-4 4 4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+        <span className="drop-label">
+          {items.length === 0
+            ? "Drop ultrasound images here"
+            : "Drop more images to add"}
+        </span>
+        <span className="drop-hint">
+          or click to browse — multiple files supported
+        </span>
+        <span className="drop-tag">PNG · JPEG · DICOM-derived</span>
+      </div>
+
+      {/* Summary bar */}
+      {items.length > 0 && (
+        <div className="summary-bar">
+          <span className="summary-count">
+            <strong>{items.length}</strong> image{items.length !== 1 ? "s" : ""}{" "}
+            loaded
+            {doneCount > 0 && (
+              <>
+                {" "}
+                · <span className="summary-done">{doneCount} analysed</span>
+              </>
+            )}
+            {pendingCount > 0 && !running && (
+              <>
+                {" "}
+                ·{" "}
+                <span className="summary-pending">{pendingCount} pending</span>
+              </>
+            )}
+          </span>
+          <div className="summary-actions">
+            {!running && pendingCount > 0 && (
+              <button className="analyse-btn" onClick={runAll}>
+                Run Analysis ({pendingCount})
+              </button>
+            )}
+            {running && (
+              <span className="running-label">
+                <div className="spinner-sm" />
+                Running…
+              </span>
+            )}
+            <button className="reset-btn" onClick={reset} disabled={running}>
+              ✕ Clear all
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Results grid */}
+      {items.length > 0 && (
+        <div className="results-grid">
+          {items.map((item, index) => (
+            <div key={item.id} className="result-card-wrapper">
+              {!running && item.status !== "loading" && (
+                <button
+                  className="remove-btn"
+                  onClick={() => removeItem(item.id)}
+                >
+                  ✕
+                </button>
+              )}
+              <ResultCard item={item} index={index} />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export default ImageUpload;
