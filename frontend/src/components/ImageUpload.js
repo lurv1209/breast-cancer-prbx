@@ -6,13 +6,15 @@ const LOADING_STEPS = [
   "Classifying lesion",
   "Generating report",
 ];
+const MODEL_OPTIONS = ["YOLOv8", "SSD", "FasterRCNN"];
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
 
-async function analyseFile(file) {
+async function analyseFile(file, model) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("model", model);
   const response = await fetch(`${API_BASE_URL}/predict`, {
     method: "POST",
     body: formData,
@@ -130,6 +132,7 @@ function ImageUpload() {
   const [items, setItems] = useState([]);
   const [dragging, setDragging] = useState(false);
   const [running, setRunning] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
 
   const addFiles = (files) => {
     const newItems = Array.from(files).map((file) => ({
@@ -178,7 +181,7 @@ function ImageUpload() {
       }
 
       try {
-        const prediction = await analyseFile(item.file);
+        const prediction = await analyseFile(item.file, selectedModel);
         setItems((prev) =>
           prev.map((i) =>
             i.id === item.id ? { ...i, status: "done", prediction } : i,
@@ -210,6 +213,24 @@ function ImageUpload() {
   return (
     <>
       {/* Drop zone */}
+      <div className="summary-bar">
+        <span className="summary-count">Model selection</span>
+        <div className="summary-actions">
+          <select
+            className="analyse-btn"
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={running}
+          >
+            {MODEL_OPTIONS.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       <div
         className={`drop-zone ${dragging ? "dragging" : ""}`}
         onDragOver={(e) => {

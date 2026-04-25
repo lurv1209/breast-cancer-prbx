@@ -1,13 +1,16 @@
 import io
+import logging
 import time
 from dataclasses import dataclass
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from pydantic import BaseModel
 
 app = FastAPI(title="Breast Cancer Inference API", version="0.1.0")
+SUPPORTED_MODELS = ("YOLOv8", "SSD", "FasterRCNN")
+logger = logging.getLogger("uvicorn.error")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,8 +40,8 @@ class InferenceService:
     Replace the stub in predict() with your real PyTorch model code.
     """
 
-    def __init__(self) -> None:
-        self.model_name = "YOLOv8"
+    def __init__(self, model_name: str) -> None:
+        self.model_name = model_name
         self._model = self._load_model()
 
     def _load_model(self):
@@ -67,7 +70,7 @@ class InferenceService:
         return ModelOutput(label="Normal", confidence=88)
 
 
-inference_service = InferenceService()
+inference_services = {model_name: InferenceService(model_name) for model_name in SUPPORTED_MODELS}
 
 
 @app.get("/health")
@@ -76,12 +79,23 @@ async def health():
 
 
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(file: UploadFile = File(...)):
+async def predict(
+    file: UploadFile = File(...),
+    model: str = Form("YOLOv8"),
+):
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image uploads are supported")
+    if model not in SUPPORTED_MODELS:
+        allowed = ", ".join(SUPPORTED_MODELS)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model '{model}'. Supported models: {allowed}",
+        )
+    logger.info("Predict request received: model=%s file=%s", model, file.filename)
 
     started_at = time.perf_counter()
     image_bytes = await file.read()
+    inference_service = inference_services[model]
     output = inference_service.predict(image_bytes)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
 

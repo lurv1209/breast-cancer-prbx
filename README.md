@@ -115,6 +115,17 @@ npm start
 - Backend docs: <http://localhost:8000/docs>
 - Backend health: <http://localhost:8000/health>
 
+### Model selection in UI
+
+- Use the model dropdown in the frontend before running analysis.
+- Current supported models:
+  - `YOLOv8`
+  - `SSD`
+  - `FasterRCNN`
+- The frontend sends the selected model to `POST /predict` as a form field named `model`.
+- If an unsupported model is sent, backend returns `400` with supported options.
+- Note: current backend inference is scaffold/stub logic until trained model weights are wired in.
+
 ### Frontend environment config
 
 Make sure `frontend/.env.local` exists with:
