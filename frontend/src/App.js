@@ -48,7 +48,7 @@ function App() {
       {/* Header */}
       <header className="header">
         <div className="header-left">
-          <span className="header-eyebrow">kea523.024 · BSc CS with AI</span>
+          <span className="header-eyebrow">kea523.024 · BEng CS with AI</span>
           <h1 className="header-title">
             Breast <span>Ultrasound</span>
             <br />

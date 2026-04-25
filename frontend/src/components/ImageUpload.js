@@ -7,20 +7,26 @@ const LOADING_STEPS = [
   "Generating report",
 ];
 
-const MOCK_RESULTS = [
-  { result: "Benign", confidence: 91, model: "YOLOv8", inferenceMs: 148 },
-  { result: "Malignant", confidence: 87, model: "YOLOv8", inferenceMs: 154 },
-  { result: "Normal", confidence: 96, model: "YOLOv8", inferenceMs: 141 },
-];
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
 
 async function analyseFile(file) {
   const formData = new FormData();
   formData.append("file", file);
-  const response = await fetch("http://localhost:8000/predict", {
+  const response = await fetch(`${API_BASE_URL}/predict`, {
     method: "POST",
     body: formData,
   });
-  if (!response.ok) throw new Error(`Server error: ${response.status}`);
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const errData = await response.json();
+      detail = errData?.detail ? ` - ${errData.detail}` : "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(`Server error: ${response.status}${detail}`);
+  }
   const data = await response.json();
   return {
     result: data.result,
@@ -178,12 +184,16 @@ function ImageUpload() {
             i.id === item.id ? { ...i, status: "done", prediction } : i,
           ),
         );
-      } catch {
-        const mock =
-          MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
+      } catch (error) {
         setItems((prev) =>
           prev.map((i) =>
-            i.id === item.id ? { ...i, status: "done", prediction: mock } : i,
+            i.id === item.id
+              ? {
+                  ...i,
+                  status: "error",
+                  error: error?.message || "Analysis failed",
+                }
+              : i,
           ),
         );
       }
