@@ -38,6 +38,21 @@ async function analyseFile(file, model) {
   };
 }
 
+async function getAnnotatedImage(file, model) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("model", model);
+  const response = await fetch(`${API_BASE_URL}/predict/visualize`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error("Failed to get annotated image");
+  }
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 function ResultCard({ item, index }) {
   const resultClass = item.prediction
     ? item.prediction.result.toLowerCase()
@@ -133,12 +148,14 @@ function ImageUpload() {
   const [dragging, setDragging] = useState(false);
   const [running, setRunning] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
+  const [viewMode, setViewMode] = useState("original"); // "original" | "annotated"
 
   const addFiles = (files) => {
     const newItems = Array.from(files).map((file) => ({
       id: `${file.name}-${Date.now()}-${Math.random()}`,
       file,
       previewUrl: URL.createObjectURL(file),
+      annotatedUrl: null,
       status: "pending",
       prediction: null,
       loadingStep: 0,
@@ -182,9 +199,18 @@ function ImageUpload() {
 
       try {
         const prediction = await analyseFile(item.file, selectedModel);
+        
+        // Get annotated image with bounding boxes
+        let annotatedUrl = null;
+        try {
+          annotatedUrl = await getAnnotatedImage(item.file, selectedModel);
+        } catch (e) {
+          console.warn("Could not get annotated image:", e);
+        }
+        
         setItems((prev) =>
           prev.map((i) =>
-            i.id === item.id ? { ...i, status: "done", prediction } : i,
+            i.id === item.id ? { ...i, status: "done", prediction, annotatedUrl } : i,
           ),
         );
       } catch (error) {

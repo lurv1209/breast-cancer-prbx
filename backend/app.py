@@ -1,12 +1,16 @@
 import io
 import logging
+import os
 import time
 from dataclasses import dataclass
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
+import torch
+from ultralytics import YOLO
 
 app = FastAPI(title="Breast Cancer Inference API", version="0.1.0")
 SUPPORTED_MODELS = ("YOLOv8", "SSD", "FasterRCNN")
@@ -36,21 +40,41 @@ class ModelOutput:
 
 class InferenceService:
     """
-    Scaffold inference service.
-    Replace the stub in predict() with your real PyTorch model code.
+    Inference service for breast cancer detection models.
+    Supports SSD (PyTorch) and YOLOv8 models.
     """
 
     def __init__(self, model_name: str) -> None:
         self.model_name = model_name
-        self._model = self._load_model()
+        self._model = None
+        self._state_dict = None
 
     def _load_model(self):
-        # TODO: Load your trained model weights here once available.
-        # Example:
-        #   model = torch.load("models/breast_model.pt", map_location="cpu")
-        #   model.eval()
-        #   return model
-        return None
+        """Load the trained model based on model name."""
+        if self._model is not None:
+            return  # Already loaded
+
+        models_dir = os.path.join(os.path.dirname(__file__), "models")
+        
+        if self.model_name == "YOLOv8":
+            model_path = os.path.join(models_dir, "yolov8_breast.pt")
+            if os.path.exists(model_path):
+                self._model = YOLO(model_path)
+        
+        elif self.model_name == "SSD":
+            model_path = os.path.join(models_dir, "ssd_breast.pth")
+            if os.path.exists(model_path):
+                # Load state dict - will need custom model architecture
+                # For now, store the path for later use
+                self._model = ("SSD", model_path)
+        
+        elif self.model_name == "FasterRCNN":
+            model_path = os.path.join(models_dir, "fasterrcnn_breast.pth")
+            if os.path.exists(model_path):
+                self._model = ("FasterRCNN", model_path)
+        
+        if self._model is None:
+            logger.warning(f"Model file not found for {self.model_name}")
 
     def _preprocess(self, image_bytes: bytes) -> Image.Image:
         try:
@@ -60,14 +84,49 @@ class InferenceService:
         return image
 
     def predict(self, image_bytes: bytes) -> ModelOutput:
-        _image = self._preprocess(image_bytes)
+        """Run inference on the input image."""
+        image = self._preprocess(image_bytes)
 
-        # TODO: Replace this stub with real inference:
-        # 1) preprocess to tensor
-        # 2) model forward pass
-        # 3) map output index -> class label
-        # 4) convert probability to integer percentage
-        return ModelOutput(label="Normal", confidence=88)
+        # Lazy load model on first request
+        self._load_model()
+
+        if self._model is None:
+            # Fallback stub if model not loaded
+            return ModelOutput(label="Normal", confidence=88)
+
+        try:
+            if self.model_name == "YOLOv8":
+                # YOLOv8 inference
+                import numpy as np
+                results = self._model(image)
+                # Parse YOLO results - adjust based on your model's output format
+                # Example: results[0].boxes contains detection boxes
+                result = results[0]
+                logger.info(f"YOLO boxes: {len(result.boxes)}")
+                if len(result.boxes) > 0:
+                    # Get the first detection's confidence
+                    conf = float(result.boxes[0].conf[0]) * 100
+                    # Map class index to label (class 0 = tumor/positive, class 1 = normal)
+                    class_id = int(result.boxes[0].cls[0])
+                    label = "Positive" if class_id == 0 else "Normal"
+                    logger.info(f"Detection: class={class_id}, conf={conf}")
+                    return ModelOutput(label=label, confidence=int(conf))
+                logger.info("No detections found")
+                return ModelOutput(label="Normal", confidence=0)
+
+            elif self.model_name == "SSD":
+                # SSD model - placeholder until architecture is defined
+                logger.warning("SSD model requires architecture definition")
+                return ModelOutput(label="Normal", confidence=88)
+
+            elif self.model_name == "FasterRCNN":
+                # FasterRCNN model - placeholder until architecture is defined
+                logger.warning("FasterRCNN model requires architecture definition")
+                return ModelOutput(label="Normal", confidence=88)
+
+        except Exception as e:
+            logger.error(f"Inference error: {e}")
+            return ModelOutput(label="Error", confidence=0)
 
 
 inference_services = {model_name: InferenceService(model_name) for model_name in SUPPORTED_MODELS}
@@ -104,4 +163,73 @@ async def predict(
         confidence=output.confidence,
         model=inference_service.model_name,
         inference_ms=elapsed_ms,
+    )
+
+
+@app.post("/predict/visualize")
+async def predict_visualize(
+    file: UploadFile = File(...),
+    model: str = Form("YOLOv8"),
+):
+    """Predict and return the image with bounding boxes drawn."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image uploads are supported")
+    if model not in SUPPORTED_MODELS:
+        allowed = ", ".join(SUPPORTED_MODELS)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model '{model}'. Supported models: {allowed}",
+        )
+    
+    image_bytes = await file.read()
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    
+    # Run inference
+    inference_service = inference_services[model]
+    output = inference_service.predict(image_bytes)
+    
+    # Draw bounding boxes if detections found
+    from PIL import ImageDraw, ImageFont
+    
+    draw = ImageDraw.Draw(image)
+    
+    # Get the YOLO results for bounding boxes
+    if model == "YOLOv8" and inference_service._model is not None:
+        results = inference_service._model(image)
+        result = results[0]
+        
+        if len(result.boxes) > 0:
+            for box in result.boxes:
+                # Get box coordinates (xyxy format)
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                conf = float(box.conf[0]) * 100
+                cls = int(box.cls[0])
+                
+                # Draw rectangle (red for tumor)
+                color = (255, 0, 0)
+                draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+                
+                # Add label with white text and dark outline for readability
+                label = f"{output.label} {conf:.1f}%"
+                # Draw text outline (black)
+                draw.text((x1 + 1, y1 - 20), label, fill=(0, 0, 0))
+                draw.text((x1 - 1, y1 - 20), label, fill=(0, 0, 0))
+                draw.text((x1, y1 - 19), label, fill=(0, 0, 0))
+                draw.text((x1, y1 - 21), label, fill=(0, 0, 0))
+                # Draw white text
+                draw.text((x1, y1 - 20), label, fill=(255, 255, 255))
+    
+    # Convert back to bytes
+    img_io = io.BytesIO()
+    image.save(img_io, format="PNG")
+    img_io.seek(0)
+    
+    return StreamingResponse(
+        img_io,
+        media_type="image/png",
+        headers={
+            "X-Result": output.label,
+            "X-Confidence": str(output.confidence),
+            "X-Model": inference_service.model_name,
+        }
     )

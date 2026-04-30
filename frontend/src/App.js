@@ -97,7 +97,7 @@ function App() {
           <circle cx="12" cy="12" r="10" />
           <path d="M12 8v4m0 4h.01" strokeLinecap="round" />
         </svg>
-        This tool is a research prototype for BSc dissertation purposes only.
+        This tool is a research prototype for BEng dissertation purposes only.
         Not a certified medical device. All predictions must be reviewed by a
         qualified radiologist.
       </div>
