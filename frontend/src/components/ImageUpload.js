@@ -6,7 +6,7 @@ const LOADING_STEPS = [
   "Classifying lesion",
   "Generating report",
 ];
-const MODEL_OPTIONS = ["YOLOv8", "SSD", "FasterRCNN"];
+const MODEL_OPTIONS = ["YOLOv8", "Multiclass YOLO"];
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
@@ -53,7 +53,7 @@ async function getAnnotatedImage(file, model) {
   return URL.createObjectURL(blob);
 }
 
-function ResultCard({ item, index }) {
+function ResultCard({ item, index, viewMode, onImageClick }) {
   const resultClass = item.prediction
     ? item.prediction.result.toLowerCase()
     : "";
@@ -64,10 +64,20 @@ function ResultCard({ item, index }) {
         ? "low"
         : "danger";
 
+  // Use annotated image if viewMode is "annotated" and available
+  const imageUrl = viewMode === "annotated" && item.annotatedUrl
+    ? item.annotatedUrl
+    : item.previewUrl;
+
   return (
     <div className={`result-card status-${item.status}`}>
       <div className="result-card-img-wrap">
-        <img src={item.previewUrl} alt={`Scan ${index + 1}`} />
+        <img 
+          src={imageUrl} 
+          alt={`Scan ${index + 1}`} 
+          onClick={() => onImageClick && onImageClick(item, viewMode === "annotated" ? "annotated" : "original")}
+          style={{ cursor: "pointer" }}
+        />
         <span className="preview-img-badge">US SCAN {index + 1}</span>
         <div className={`status-badge status-badge-${item.status}`}>
           {item.status === "pending" && "Queued"}
@@ -148,7 +158,8 @@ function ImageUpload() {
   const [dragging, setDragging] = useState(false);
   const [running, setRunning] = useState(false);
   const [selectedModel, setSelectedModel] = useState(MODEL_OPTIONS[0]);
-  const [viewMode, setViewMode] = useState("original"); // "original" | "annotated"
+  const [viewMode, setViewMode] = useState("original"); // "original" | "annotated" | "table"
+  const [lightbox, setLightbox] = useState(null); // { item, imageType } | null
 
   const addFiles = (files) => {
     const newItems = Array.from(files).map((file) => ({
@@ -257,6 +268,33 @@ function ImageUpload() {
         </div>
       </div>
 
+      {/* View toggle */}
+      {doneCount > 0 && (
+        <div className="summary-bar">
+          <span className="summary-count">View</span>
+          <div className="summary-actions">
+            <button
+              className={`view-btn ${viewMode === "original" ? "active" : ""}`}
+              onClick={() => setViewMode("original")}
+            >
+              Original
+            </button>
+            <button
+              className={`view-btn ${viewMode === "annotated" ? "active" : ""}`}
+              onClick={() => setViewMode("annotated")}
+            >
+              With Bounding Box
+            </button>
+            <button
+              className={`view-btn ${viewMode === "table" ? "active" : ""}`}
+              onClick={() => setViewMode("table")}
+            >
+              Table View
+            </button>
+          </div>
+        </div>
+      )}
+
       <div
         className={`drop-zone ${dragging ? "dragging" : ""}`}
         onDragOver={(e) => {
@@ -339,7 +377,61 @@ function ImageUpload() {
       )}
 
       {/* Results grid */}
-      {items.length > 0 && (
+      {items.length > 0 && viewMode === "table" && (
+        <div className="results-table">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Original</th>
+                <th>With Bounding Box</th>
+                <th>Result</th>
+                <th>Confidence</th>
+                <th>Model</th>
+                <th>Inference (ms)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.filter(i => i.status === "done").map((item, index) => (
+                <tr key={item.id}>
+                  <td>{index + 1}</td>
+                  <td>
+                    <img 
+                      src={item.previewUrl} 
+                      alt="Original" 
+                      className="table-thumb" 
+                      onClick={() => setLightbox({ item, imageType: "original" })}
+                      style={{ cursor: "pointer" }}
+                    />
+                  </td>
+                  <td>
+                    {item.annotatedUrl ? (
+                      <img 
+                        src={item.annotatedUrl} 
+                        alt="Annotated" 
+                        className="table-thumb" 
+                        onClick={() => setLightbox({ item, imageType: "annotated" })}
+                        style={{ cursor: "pointer" }}
+                      />
+                    ) : (
+                      <span className="no-image">N/A</span>
+                    )}
+                  </td>
+                  <td className={`result-cell ${item.prediction?.result?.toLowerCase()}`}>
+                    {item.prediction?.result}
+                  </td>
+                  <td>{item.prediction?.confidence}%</td>
+                  <td>{item.prediction?.model}</td>
+                  <td>{item.prediction?.inferenceMs}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Results grid */}
+      {items.length > 0 && viewMode !== "table" && (
         <div className="results-grid">
           {items.map((item, index) => (
             <div key={item.id} className="result-card-wrapper">
@@ -351,9 +443,40 @@ function ImageUpload() {
                   ✕
                 </button>
               )}
-              <ResultCard item={item} index={index} />
+              <ResultCard item={item} index={index} viewMode={viewMode} onImageClick={(item, type) => setLightbox({ item, imageType: type })} />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Lightbox for enlarged image view */}
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+            <button className="lightbox-close" onClick={() => setLightbox(null)}>
+              ✕
+            </button>
+            <div className="lightbox-header">
+              <span className="lightbox-filename">{lightbox.item.file.name}</span>
+              <span className="lightbox-label">
+                {lightbox.imageType === "annotated" ? "With Bounding Box" : "Original"}
+              </span>
+              {lightbox.item.prediction && (
+                <span className={`lightbox-result ${lightbox.item.prediction.result.toLowerCase()}`}>
+                  {lightbox.item.prediction.result} ({lightbox.item.prediction.confidence}%)
+                </span>
+              )}
+            </div>
+            <img 
+              src={lightbox.imageType === "annotated" && lightbox.item.annotatedUrl 
+                ? lightbox.item.annotatedUrl 
+                : lightbox.item.previewUrl} 
+              alt="Enlarged view" 
+            />
+            <div className="lightbox-footer">
+              <span>Click outside or press ✕ to close</span>
+            </div>
+          </div>
         </div>
       )}
     </>

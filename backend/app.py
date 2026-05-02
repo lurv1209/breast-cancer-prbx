@@ -13,12 +13,23 @@ import torch
 from ultralytics import YOLO
 
 app = FastAPI(title="Breast Cancer Inference API", version="0.1.0")
-SUPPORTED_MODELS = ("YOLOv8", "SSD", "FasterRCNN")
+SUPPORTED_MODELS = ("YOLOv8", "Multiclass YOLO")
+
+# Class mappings for YOLO models
+CLASS_MAPPINGS = {
+    "YOLOv8": {0: "Positive", 1: "Normal"},  # Binary classification
+    "Multiclass YOLO": {0: "Benign", 1: "Malignant"},  # Multiclass classification
+}
 logger = logging.getLogger("uvicorn.error")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "http://localhost:3001",  # Local development (alternative port)
+        "https://breast-cancer-prbx.vercel.app",  # Vercel production domain
+        "*",  # Allow all origins for now (you can restrict this later)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,8 +51,7 @@ class ModelOutput:
 
 class InferenceService:
     """
-    Inference service for breast cancer detection models.
-    Supports SSD (PyTorch) and YOLOv8 models.
+    Inference service for breast cancer detection using YOLO models.
     """
 
     def __init__(self, model_name: str) -> None:
@@ -50,7 +60,7 @@ class InferenceService:
         self._state_dict = None
 
     def _load_model(self):
-        """Load the trained model based on model name."""
+        """Load the trained YOLO model."""
         if self._model is not None:
             return  # Already loaded
 
@@ -61,17 +71,10 @@ class InferenceService:
             if os.path.exists(model_path):
                 self._model = YOLO(model_path)
         
-        elif self.model_name == "SSD":
-            model_path = os.path.join(models_dir, "ssd_breast.pth")
+        elif self.model_name == "Multiclass YOLO":
+            model_path = os.path.join(models_dir, "yolov8_multiclass.pt")
             if os.path.exists(model_path):
-                # Load state dict - will need custom model architecture
-                # For now, store the path for later use
-                self._model = ("SSD", model_path)
-        
-        elif self.model_name == "FasterRCNN":
-            model_path = os.path.join(models_dir, "fasterrcnn_breast.pth")
-            if os.path.exists(model_path):
-                self._model = ("FasterRCNN", model_path)
+                self._model = YOLO(model_path)
         
         if self._model is None:
             logger.warning(f"Model file not found for {self.model_name}")
@@ -95,34 +98,23 @@ class InferenceService:
             return ModelOutput(label="Normal", confidence=88)
 
         try:
-            if self.model_name == "YOLOv8":
-                # YOLOv8 inference
+            if self.model_name in ("YOLOv8", "Multiclass YOLO"):
+                # YOLOv8 inference (binary or multiclass)
                 import numpy as np
                 results = self._model(image)
-                # Parse YOLO results - adjust based on your model's output format
-                # Example: results[0].boxes contains detection boxes
                 result = results[0]
                 logger.info(f"YOLO boxes: {len(result.boxes)}")
                 if len(result.boxes) > 0:
                     # Get the first detection's confidence
                     conf = float(result.boxes[0].conf[0]) * 100
-                    # Map class index to label (class 0 = tumor/positive, class 1 = normal)
                     class_id = int(result.boxes[0].cls[0])
-                    label = "Positive" if class_id == 0 else "Normal"
-                    logger.info(f"Detection: class={class_id}, conf={conf}")
+                    # Use class mapping based on model
+                    class_map = CLASS_MAPPINGS.get(self.model_name, {})
+                    label = class_map.get(class_id, f"Class {class_id}")
+                    logger.info(f"Detection: class={class_id}, conf={conf}, label={label}")
                     return ModelOutput(label=label, confidence=int(conf))
                 logger.info("No detections found")
                 return ModelOutput(label="Normal", confidence=0)
-
-            elif self.model_name == "SSD":
-                # SSD model - placeholder until architecture is defined
-                logger.warning("SSD model requires architecture definition")
-                return ModelOutput(label="Normal", confidence=88)
-
-            elif self.model_name == "FasterRCNN":
-                # FasterRCNN model - placeholder until architecture is defined
-                logger.warning("FasterRCNN model requires architecture definition")
-                return ModelOutput(label="Normal", confidence=88)
 
         except Exception as e:
             logger.error(f"Inference error: {e}")
@@ -194,7 +186,7 @@ async def predict_visualize(
     draw = ImageDraw.Draw(image)
     
     # Get the YOLO results for bounding boxes
-    if model == "YOLOv8" and inference_service._model is not None:
+    if model in ("YOLOv8", "Multiclass YOLO") and inference_service._model is not None:
         results = inference_service._model(image)
         result = results[0]
         
@@ -205,12 +197,16 @@ async def predict_visualize(
                 conf = float(box.conf[0]) * 100
                 cls = int(box.cls[0])
                 
-                # Draw rectangle (red for tumor)
-                color = (255, 0, 0)
+                # Get label from class mapping
+                class_map = CLASS_MAPPINGS.get(model, {})
+                label_text = class_map.get(cls, f"Class {cls}")
+                
+                # Draw rectangle (red for malignant/positive, green for benign/normal)
+                color = (255, 0, 0) if cls == 1 else (0, 255, 0)  # Red for malignant/positive, green for benign/normal
                 draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
                 
                 # Add label with white text and dark outline for readability
-                label = f"{output.label} {conf:.1f}%"
+                label = f"{label_text} {conf:.1f}%"
                 # Draw text outline (black)
                 draw.text((x1 + 1, y1 - 20), label, fill=(0, 0, 0))
                 draw.text((x1 - 1, y1 - 20), label, fill=(0, 0, 0))
@@ -233,3 +229,9 @@ async def predict_visualize(
             "X-Model": inference_service.model_name,
         }
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

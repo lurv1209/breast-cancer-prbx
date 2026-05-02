@@ -120,6 +120,7 @@ npm start
 - Use the model dropdown in the frontend before running analysis.
 - Current supported models:
   - `YOLOv8`
+  - `Multiclass YOLOv8`
   - `SSD`
   - `FasterRCNN`
 - The frontend sends the selected model to `POST /predict` as a form field named `model`.
