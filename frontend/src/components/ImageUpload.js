@@ -16,27 +16,37 @@ async function analyseFile(file, model) {
   const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout for slow CPU inference
 
   try {
+    console.log(`🚀 Starting analysis for ${file.name} with model ${model}`);
+    console.log(`📡 API URL: ${API_BASE_URL}/predict`);
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("model", model);
+
     const response = await fetch(`${API_BASE_URL}/predict`, {
       method: "POST",
       body: formData,
       signal: controller.signal,
     });
+
     clearTimeout(timeoutId);
-    
+    console.log(`✅ Response received: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
       let detail = "";
       try {
         const errData = await response.json();
         detail = errData?.detail ? ` - ${errData.detail}` : "";
+        console.error(`❌ Server error response:`, errData);
       } catch {
         detail = "";
       }
       throw new Error(`Server error: ${response.status}${detail}`);
     }
+
     const data = await response.json();
+    console.log(`📊 Analysis complete:`, data);
+
     return {
       result: data.result,
       confidence: data.confidence ?? 88,
@@ -45,6 +55,8 @@ async function analyseFile(file, model) {
     };
   } catch (error) {
     clearTimeout(timeoutId);
+    console.error(`💥 Analysis failed:`, error);
+
     if (error.name === 'AbortError') {
       throw new Error('Request timed out - please check if the backend server is running');
     }
@@ -57,6 +69,8 @@ async function getAnnotatedImage(file, model) {
   const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout for slow CPU inference
 
   try {
+    console.log(`🎨 Getting annotated image for ${file.name} with model ${model}`);
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("model", model);
@@ -66,14 +80,20 @@ async function getAnnotatedImage(file, model) {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    
+
+    console.log(`✅ Annotated image response: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
       throw new Error("Failed to get annotated image");
     }
     const blob = await response.blob();
+    console.log(`🖼️ Annotated image loaded, size: ${blob.size} bytes`);
+
     return URL.createObjectURL(blob);
   } catch (error) {
     clearTimeout(timeoutId);
+    console.error(`💥 Annotated image failed:`, error);
+
     if (error.name === 'AbortError') {
       throw new Error('Request timed out while getting annotated image');
     }
@@ -258,15 +278,20 @@ function ImageUpload() {
         }, 1000);
 
         try {
+          console.log(`🔄 Processing ${item.file.name}...`);
+
           for (let step = 0; step < LOADING_STEPS.length; step++) {
+            console.log(`📍 Step ${step + 1}/${LOADING_STEPS.length}: ${LOADING_STEPS[step]}`);
             setItems((prev) =>
               prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
             );
             await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
           }
 
+          console.log(`🤖 Calling API for ${item.file.name}...`);
           try {
             const prediction = await analyseFile(item.file, selectedModel);
+            console.log(`✅ Prediction received:`, prediction);
             
             // Get annotated image with bounding boxes
             let annotatedUrl = null;
@@ -281,7 +306,9 @@ function ImageUpload() {
                 i.id === item.id ? { ...i, status: "done", prediction, annotatedUrl } : i,
               ),
             );
+            console.log(`🎉 State updated for ${item.file.name}: status=done`);
           } catch (error) {
+            console.log(`❌ Error for ${item.file.name}:`, error);
             setItems((prev) =>
               prev.map((i) =>
                 i.id === item.id
@@ -293,12 +320,14 @@ function ImageUpload() {
                   : i,
               ),
             );
+            console.log(`💥 State updated for ${item.file.name}: status=error`);
           }
         } finally {
           clearInterval(timerInterval);
         }
       }
     } finally {
+      console.log("🏁 runAll function completed");
       setRunning(false);
     }
   };
