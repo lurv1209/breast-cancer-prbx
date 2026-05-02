@@ -12,45 +12,73 @@ const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
 
 async function analyseFile(file, model) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("model", model);
-  const response = await fetch(`${API_BASE_URL}/predict`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const errData = await response.json();
-      detail = errData?.detail ? ` - ${errData.detail}` : "";
-    } catch {
-      detail = "";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("model", model);
+    const response = await fetch(`${API_BASE_URL}/predict`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      let detail = "";
+      try {
+        const errData = await response.json();
+        detail = errData?.detail ? ` - ${errData.detail}` : "";
+      } catch {
+        detail = "";
+      }
+      throw new Error(`Server error: ${response.status}${detail}`);
     }
-    throw new Error(`Server error: ${response.status}${detail}`);
+    const data = await response.json();
+    return {
+      result: data.result,
+      confidence: data.confidence ?? 88,
+      model: data.model ?? "YOLOv8",
+      inferenceMs: data.inference_ms ?? 149,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out - please check if the backend server is running');
+    }
+    throw error;
   }
-  const data = await response.json();
-  return {
-    result: data.result,
-    confidence: data.confidence ?? 88,
-    model: data.model ?? "YOLOv8",
-    inferenceMs: data.inference_ms ?? 149,
-  };
 }
 
 async function getAnnotatedImage(file, model) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("model", model);
-  const response = await fetch(`${API_BASE_URL}/predict/visualize`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!response.ok) {
-    throw new Error("Failed to get annotated image");
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("model", model);
+    const response = await fetch(`${API_BASE_URL}/predict/visualize`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error("Failed to get annotated image");
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out while getting annotated image');
+    }
+    throw error;
   }
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
 }
 
 function ResultCard({ item, index, viewMode, onImageClick }) {
@@ -192,60 +220,61 @@ function ImageUpload() {
   const runAll = async () => {
     setRunning(true);
 
-    const pending = items.filter((i) => i.status === "pending");
+    try {
+      const pending = items.filter((i) => i.status === "pending");
 
-    for (const item of pending) {
-      setItems((prev) =>
-        prev.map((i) =>
-          i.id === item.id ? { ...i, status: "loading", loadingStep: 0 } : i,
-        ),
-      );
-
-      for (let step = 0; step < LOADING_STEPS.length; step++) {
+      for (const item of pending) {
         setItems((prev) =>
-          prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
+          prev.map((i) =>
+            i.id === item.id ? { ...i, status: "loading", loadingStep: 0 } : i,
+          ),
         );
-        await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
-      }
 
-      try {
-        const prediction = await analyseFile(item.file, selectedModel);
-        
-        // Get annotated image with bounding boxes
-        let annotatedUrl = null;
-        try {
-          annotatedUrl = await getAnnotatedImage(item.file, selectedModel);
-        } catch (e) {
-          console.warn("Could not get annotated image:", e);
+        for (let step = 0; step < LOADING_STEPS.length; step++) {
+          setItems((prev) =>
+            prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
+          );
+          await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
         }
-        
-        setItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id ? { ...i, status: "done", prediction, annotatedUrl } : i,
-          ),
-        );
-      } catch (error) {
-        setItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id
-              ? {
-                  ...i,
-                  status: "error",
-                  error: error?.message || "Analysis failed",
-                }
-              : i,
-          ),
-        );
+
+        try {
+          const prediction = await analyseFile(item.file, selectedModel);
+          
+          // Get annotated image with bounding boxes
+          let annotatedUrl = null;
+          try {
+            annotatedUrl = await getAnnotatedImage(item.file, selectedModel);
+          } catch (e) {
+            console.warn("Could not get annotated image:", e);
+          }
+          
+          setItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id ? { ...i, status: "done", prediction, annotatedUrl } : i,
+            ),
+          );
+        } catch (error) {
+          setItems((prev) =>
+            prev.map((i) =>
+              i.id === item.id
+                ? {
+                    ...i,
+                    status: "error",
+                    error: error?.message || "Analysis failed",
+                  }
+                : i,
+            ),
+          );
+        }
       }
+    } finally {
+      setRunning(false);
     }
-
-    setRunning(false);
   };
-
-  const reset = () => setItems([]);
-
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const doneCount = items.filter((i) => i.status === "done").length;
+
+  const reset = () => setItems([]);
 
   return (
     <>
