@@ -124,9 +124,27 @@ class InferenceService:
 inference_services = {model_name: InferenceService(model_name) for model_name in SUPPORTED_MODELS}
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Log startup and check model availability."""
+    logger.info("🚀 Application starting up...")
+    logger.info(f"Supported models: {SUPPORTED_MODELS}")
+    
+    models_dir = os.path.join(os.path.dirname(__file__), "models")
+    logger.info(f"Models directory: {models_dir}")
+    
+    if os.path.exists(models_dir):
+        model_files = os.listdir(models_dir)
+        logger.info(f"Model files found: {model_files}")
+    else:
+        logger.warning(f"Models directory does not exist: {models_dir}")
+    
+    logger.info("✅ Application startup complete")
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "models": list(SUPPORTED_MODELS)}
 
 
 @app.post("/predict", response_model=PredictionResponse)
