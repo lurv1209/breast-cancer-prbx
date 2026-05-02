@@ -13,7 +13,7 @@ const API_BASE_URL =
 
 async function analyseFile(file, model) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout for slow CPU inference
 
   try {
     const formData = new FormData();
@@ -54,7 +54,7 @@ async function analyseFile(file, model) {
 
 async function getAnnotatedImage(file, model) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout for slow CPU inference
 
   try {
     const formData = new FormData();
@@ -125,6 +125,18 @@ function ResultCard({ item, index, viewMode, onImageClick }) {
 
         {item.status === "loading" && (
           <div className="loading-steps">
+            <div className="loading-timer">
+              ⏱️ Elapsed: {item.elapsedTime || 0}s (This may take 30-60 seconds)
+            </div>
+            <div className="loading-progress-bar">
+              <div 
+                className="loading-progress-fill"
+                style={{ 
+                  width: `${Math.min((item.elapsedTime || 0) / 60 * 100, 95)}%`,
+                  transition: 'width 0.3s ease'
+                }}
+              />
+            </div>
             {LOADING_STEPS.map((s, i) => (
               <div
                 key={s}
@@ -199,6 +211,8 @@ function ImageUpload() {
       prediction: null,
       loadingStep: 0,
       error: null,
+      elapsedTime: 0,
+      startTime: null,
     }));
     setItems((prev) => [...prev, ...newItems]);
   };
@@ -224,47 +238,64 @@ function ImageUpload() {
       const pending = items.filter((i) => i.status === "pending");
 
       for (const item of pending) {
+        const startTime = Date.now();
+        
         setItems((prev) =>
           prev.map((i) =>
-            i.id === item.id ? { ...i, status: "loading", loadingStep: 0 } : i,
+            i.id === item.id ? { ...i, status: "loading", loadingStep: 0, startTime } : i,
           ),
         );
 
-        for (let step = 0; step < LOADING_STEPS.length; step++) {
-          setItems((prev) =>
-            prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
-          );
-          await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
-        }
-
-        try {
-          const prediction = await analyseFile(item.file, selectedModel);
-          
-          // Get annotated image with bounding boxes
-          let annotatedUrl = null;
-          try {
-            annotatedUrl = await getAnnotatedImage(item.file, selectedModel);
-          } catch (e) {
-            console.warn("Could not get annotated image:", e);
-          }
-          
+        // Update elapsed time every second during loading
+        const timerInterval = setInterval(() => {
           setItems((prev) =>
             prev.map((i) =>
-              i.id === item.id ? { ...i, status: "done", prediction, annotatedUrl } : i,
-            ),
-          );
-        } catch (error) {
-          setItems((prev) =>
-            prev.map((i) =>
-              i.id === item.id
-                ? {
-                    ...i,
-                    status: "error",
-                    error: error?.message || "Analysis failed",
-                  }
+              i.id === item.id && i.status === "loading"
+                ? { ...i, elapsedTime: Math.floor((Date.now() - startTime) / 1000) }
                 : i,
             ),
           );
+        }, 1000);
+
+        try {
+          for (let step = 0; step < LOADING_STEPS.length; step++) {
+            setItems((prev) =>
+              prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
+            );
+            await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
+          }
+
+          try {
+            const prediction = await analyseFile(item.file, selectedModel);
+            
+            // Get annotated image with bounding boxes
+            let annotatedUrl = null;
+            try {
+              annotatedUrl = await getAnnotatedImage(item.file, selectedModel);
+            } catch (e) {
+              console.warn("Could not get annotated image:", e);
+            }
+            
+            setItems((prev) =>
+              prev.map((i) =>
+                i.id === item.id ? { ...i, status: "done", prediction, annotatedUrl } : i,
+              ),
+            );
+          } catch (error) {
+            setItems((prev) =>
+              prev.map((i) =>
+                i.id === item.id
+                  ? {
+                      ...i,
+                      status: "error",
+                      error: error?.message || "Analysis failed",
+                    }
+                  : i,
+              ),
+            );
+          }
+        } finally {
+          clearInterval(timerInterval);
         }
       }
     } finally {
