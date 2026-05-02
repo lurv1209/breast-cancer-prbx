@@ -285,13 +285,15 @@ function ImageUpload() {
             setItems((prev) =>
               prev.map((i) => (i.id === item.id ? { ...i, loadingStep: step } : i)),
             );
-            await new Promise((r) => setTimeout(r, 420 + Math.random() * 180));
+            await new Promise((r) => setTimeout(r, 200 + Math.random() * 100)); // Faster steps
           }
 
           console.log(`🤖 Calling API for ${item.file.name}...`);
+          const startTime = Date.now();
           try {
             const prediction = await analyseFile(item.file, selectedModel);
-            console.log(`✅ Prediction received:`, prediction);
+            const inferenceTime = Date.now() - startTime;
+            console.log(`✅ Prediction received in ${inferenceTime}ms:`, prediction);
             
             // Get annotated image with bounding boxes
             let annotatedUrl = null;
@@ -447,6 +449,11 @@ function ImageUpload() {
             )}
           </span>
           <div className="summary-actions">
+            {pendingCount > 0 && (
+              <div className="performance-notice">
+                ⚡ Analysis may take over 60 seconds per image on free hosting
+              </div>
+            )}
             {!running && pendingCount > 0 && (
               <button className="analyse-btn" onClick={runAll}>
                 Run Analysis ({pendingCount})

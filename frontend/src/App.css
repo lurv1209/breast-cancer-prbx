@@ -369,6 +369,14 @@ body {
   flex-wrap: wrap;
 }
 
+.performance-notice {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
 .running-label {
   display: flex;
   align-items: center;
