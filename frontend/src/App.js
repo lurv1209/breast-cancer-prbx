@@ -55,7 +55,7 @@ function App() {
             Cancer Detection
           </h1>
           <p className="header-sub">
-            Deep learning · YOLOv8 / SSD / Faster R-CNN
+            Deep learning · YOLOv8 / Multi-class YOLO
           </p>
           <div className="header-divider" />
         </div>
