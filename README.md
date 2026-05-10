@@ -1,149 +1,122 @@
 # Breast Cancer Detection in Ultrasound Images
 
-## Quick Start
+## About
 
-From project root (`breast-cancer-prbx`), run once for setup:
+This repository is a reproducible research prototype for breast ultrasound cancer detection.
 
-```powershell
-cd backend
-python -m pip install -r requirements.txt
-cd ..\frontend
-& "C:\Program Files\nodejs\npm.cmd" install
-```
+It includes:
+- a **React** frontend for uploading ultrasound images and selecting a model,
+- a **FastAPI** backend that runs YOLO inference and returns predictions,
+- a visualization endpoint that returns the uploaded image with bounding boxes and label text.
 
-Then, each time you want to run the app, open two terminals:
+The platform currently supports the following model modes:
+- `YOLOv8`
+- `Multiclass YOLO`
 
-```powershell
-# Terminal 1 (backend)
-cd C:\Users\Lurvish\Documents\GitHub\breast-cancer-prbx\backend
-python -m uvicorn app:app --reload --port 8000
+If you have your own trained YOLO weights, place them in `backend/models/` and update the backend model filenames accordingly.
 
-# Terminal 2 (frontend)
-cd C:\Users\Lurvish\Documents\GitHub\breast-cancer-prbx\frontend
-npm start
-```
+## Reproducibility and replication
 
-Open:
-- Frontend: <http://localhost:3000>
-- Backend docs: <http://localhost:8000/docs>
+To reproduce this platform, follow these steps from the repository root.
 
-## Overview
+### 1. Install Python dependencies
 
-Deep learning system for detecting and classifying breast tumours from ultrasound images.
-
-## Models
-
-- YOLOv8
-- SSD
-- Faster R-CNN
-
-## Features
-
-- Image upload web interface
-- Real-time prediction
-- Grad-CAM explainability
-
-## Tech Stack
-
-- PyTorch
-- FastAPI
-- React
-
-## Demo
-
-Coming soon
-
-## Local Setup (Windows / PowerShell)
-
-### One-time setup
-
-From the project root:
-
-#### Backend dependencies
+It is recommended to use a virtual environment.
 
 ```powershell
 cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-#### Frontend dependencies
+### 2. Install frontend dependencies
 
 ```powershell
 cd ..\frontend
-& "C:\Program Files\nodejs\npm.cmd" install
-```
-
-If PowerShell execution policy is already configured for npm scripts, you can use:
-
-```powershell
 npm install
 ```
 
-### Run the project (next time and daily workflow)
+### 3. Configure frontend API URL (optional)
 
-Open two terminals.
-
-#### Terminal 1: Backend
-
-```powershell
-cd C:\Users\Lurvish\Documents\GitHub\breast-cancer-prbx\backend
-python -m uvicorn app:app --reload --port 8000
-```
-
-Health check:
-
-```powershell
-Invoke-RestMethod http://localhost:8000/health
-```
-
-#### Terminal 2: Frontend
-
-```powershell
-cd C:\Users\Lurvish\Documents\GitHub\breast-cancer-prbx\frontend
-& "C:\Program Files\nodejs\npm.cmd" start
-```
-
-If npm is available directly in your terminal:
-
-```powershell
-npm start
-```
-
-### App URLs
-
-- Frontend: <http://localhost:3000>
-- Backend docs: <http://localhost:8000/docs>
-- Backend health: <http://localhost:8000/health>
-
-### Model selection in UI
-
-- Use the model dropdown in the frontend before running analysis.
-- Current supported models:
-  - `YOLOv8`
-  - `Multiclass YOLOv8`
-  - `SSD`
-  - `FasterRCNN`
-- The frontend sends the selected model to `POST /predict` as a form field named `model`.
-- If an unsupported model is sent, backend returns `400` with supported options.
-- Note: current backend inference is scaffold/stub logic until trained model weights are wired in.
-
-### Frontend environment config
-
-Make sure `frontend/.env.local` exists with:
+The frontend defaults to `http://localhost:8000`.
+If you need to override it, create `frontend/.env.local` with:
 
 ```env
 REACT_APP_API_BASE_URL=http://localhost:8000
 ```
 
-If you create or update this file, restart the frontend dev server.
+### 4. Start the backend server
 
-### Troubleshooting
+Open a terminal and run:
 
-- `Error loading ASGI app. Could not import module "app"`:
-  - Start backend from the `backend` folder, or run `python -m uvicorn backend.app:app --reload --port 8000` from root.
-- `npm` not recognized:
-  - Open a new terminal, or use `& "C:\Program Files\nodejs\npm.cmd" ...`.
-- `npm.ps1 cannot be loaded because running scripts is disabled`:
-  - Use `npm.cmd` as above, or set PowerShell execution policy for your user.
-- Upload works but predictions are generic:
-  - Backend currently uses scaffold inference until trained model loading/inference is wired in `backend/app.py`.
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn app:app --reload --port 8000
+```
+
+### 5. Start the frontend server
+
+Open a second terminal and run:
+
+```powershell
+cd frontend
+npm start
+```
+
+### 6. Open the application
+
+- Frontend interface: <http://localhost:3000>
+- Backend API docs: <http://localhost:8000/docs>
+- Health check endpoint: <http://localhost:8000/health>
+
+## How the platform works
+
+- The frontend uploads an image file and a selected model name to the backend.
+- The backend loads the corresponding YOLO model from `backend/models/` and performs inference.
+- The `/predict` endpoint returns a JSON payload with:
+  - `result` (classification label),
+  - `confidence` (percentage),
+  - `model` (selected model name),
+  - `inference_ms`.
+- The `/predict/visualize` endpoint returns a PNG image with bounding boxes and label text drawn directly on the image.
+
+## Current implementation details
+
+- Backend: `backend/app.py`
+- Frontend: `frontend/src/components/ImageUpload.js`
+- Supported models are defined in `backend/app.py` as `YOLOv8` and `Multiclass YOLO`.
+- The frontend supports model selection via a dropdown and sends the selected value in form data.
+- When a user uploads an image, the card view can open the original or annotated image. The table view includes an eye icon to open the full result overlay.
+
+## Model files
+
+Place your trained YOLO model weights in `backend/models/`.
+The current backend expects:
+- `yolov8_breast.pt` for the binary YOLOv8 model
+- `yolov8_multiclass.pt` for the multiclass YOLO model
+
+If you have alternate filenames, update `backend/app.py` in the `_load_model` method.
+
+## Test images
+
+Sample ultrasound images can be placed in the `test_images/` directory.
+These will be served by the backend and accessible via the frontend's "Show Sample Images" section.
+Supported formats: PNG, JPG, JPEG, GIF, BMP.
+
+The frontend will display thumbnails of available test images, allowing users to load them for testing without uploading their own files.
+
+## Notes for dissertation reproducibility
+
+- Include the full repository on GitHub with this README and the `backend/models/` filenames.
+- Document the exact Python and Node versions used.
+- Provide any trained model weights or links to them if they cannot be included directly.
+- Point reviewers to `backend/app.py` for backend inference flow and `frontend/src/components/ImageUpload.js` for UI behavior.
+
+## Troubleshooting
+
+- If the backend fails to start because the module cannot be found, ensure you are in the `backend` folder and that the virtual environment is activated.
+- If `npm` is not recognized, make sure Node.js is installed and available in your terminal.
+- If uploads succeed but no annotated image appears, confirm the backend can load the model file from `backend/models/`.
