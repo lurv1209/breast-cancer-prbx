@@ -25,12 +25,12 @@ logger = logging.getLogger("uvicorn.error")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # Local development
-        "http://localhost:3001",  # Local development (alternative port)
-        "https://breast-cancer-prbx.vercel.app",  # Vercel production domain
-        "*",  # Allow all origins for now (you can restrict this later)
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://breast-cancer-prbx.vercel.app",
+        "https://breast-cancer-prbx-1.onrender.com",
     ],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -116,8 +116,8 @@ class InferenceService:
                 logger.info("No detections found")
                 return ModelOutput(label="Normal", confidence=0)
 
-        except Exception as e:
-            logger.error(f"Inference error: {e}")
+        except Exception:
+            logger.exception("Inference error")
             return ModelOutput(label="Error", confidence=0)
 
 
@@ -168,6 +168,10 @@ async def predict(
     output = inference_service.predict(image_bytes)
     elapsed_ms = int((time.perf_counter() - started_at) * 1000)
 
+    if output.label == "Error":
+        logger.error("Inference service returned Error label for file %s", file.filename)
+        raise HTTPException(status_code=500, detail="Inference service error; check backend logs")
+
     return PredictionResponse(
         result=output.label,
         confidence=output.confidence,
@@ -196,12 +200,26 @@ async def predict_visualize(
     
     # Run inference
     inference_service = inference_services[model]
-    output = inference_service.predict(image_bytes)
+    try:
+        output = inference_service.predict(image_bytes)
+    except Exception as e:
+        logger.exception("Visualization inference failed")
+        raise HTTPException(status_code=500, detail="Visualization inference failed")
     
     # Draw bounding boxes if detections found
     from PIL import ImageDraw, ImageFont
     
     draw = ImageDraw.Draw(image)
+    
+    # Choose a larger label font based on image size
+    font_size = max(18, int(min(image.size) * 0.035))
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except Exception:
+        try:
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
+        except Exception:
+            font = ImageFont.load_default()
     
     # Get the YOLO results for bounding boxes
     if model in ("YOLOv8", "Multiclass YOLO") and inference_service._model is not None:
@@ -220,18 +238,30 @@ async def predict_visualize(
                 label_text = class_map.get(cls, f"Class {cls}")
                 
                 # Draw rectangle (red for malignant/positive, green for benign/normal)
-                color = (255, 0, 0) if cls == 1 else (0, 255, 0)  # Red for malignant/positive, green for benign/normal
+                color = (255, 0, 0) if cls == 1 else (0, 255, 0)
                 draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
                 
-                # Add label with white text and dark outline for readability
                 label = f"{label_text} {conf:.1f}%"
-                # Draw text outline (black)
-                draw.text((x1 + 1, y1 - 20), label, fill=(0, 0, 0))
-                draw.text((x1 - 1, y1 - 20), label, fill=(0, 0, 0))
-                draw.text((x1, y1 - 19), label, fill=(0, 0, 0))
-                draw.text((x1, y1 - 21), label, fill=(0, 0, 0))
-                # Draw white text
-                draw.text((x1, y1 - 20), label, fill=(255, 255, 255))
+                text_bbox = draw.textbbox((0, 0), label, font=font)
+                text_width = text_bbox[2] - text_bbox[0]
+                text_height = text_bbox[3] - text_bbox[1]
+                text_x = x1
+                text_y = y1 - text_height - 8
+                if text_y < 0:
+                    text_y = y1 + 8
+                
+                # Draw a solid background behind the text for readability
+                draw.rectangle(
+                    [
+                        text_x - 2,
+                        text_y - 2,
+                        text_x + text_width + 4,
+                        text_y + text_height + 2,
+                    ],
+                    fill=(0, 0, 0),
+                )
+                
+                draw.text((text_x, text_y), label, font=font, fill=(255, 255, 255))
     
     # Convert back to bytes
     img_io = io.BytesIO()
