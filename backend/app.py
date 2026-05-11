@@ -28,8 +28,10 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:3001",
         "https://breast-cancer-prbx.vercel.app",
+        "https://breast-cancer-prbx-hxzlvk3fh-lurvishs-projects.vercel.app",
         "https://breast-cancer-prbx-1.onrender.com",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -116,9 +118,9 @@ class InferenceService:
                 logger.info("No detections found")
                 return ModelOutput(label="Normal", confidence=0)
 
-        except Exception:
+        except Exception as exc:
             logger.exception("Inference error")
-            return ModelOutput(label="Error", confidence=0)
+            raise RuntimeError("YOLO inference failed") from exc
 
 
 inference_services = {model_name: InferenceService(model_name) for model_name in SUPPORTED_MODELS}
@@ -165,12 +167,14 @@ async def predict(
     started_at = time.perf_counter()
     image_bytes = await file.read()
     inference_service = inference_services[model]
-    output = inference_service.predict(image_bytes)
-    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
 
-    if output.label == "Error":
-        logger.error("Inference service returned Error label for file %s", file.filename)
-        raise HTTPException(status_code=500, detail="Inference service error; check backend logs")
+    try:
+        output = inference_service.predict(image_bytes)
+    except Exception as exc:
+        logger.exception("Predict endpoint failed for file %s", file.filename)
+        raise HTTPException(status_code=500, detail="Inference service error; check backend logs") from exc
+
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
 
     return PredictionResponse(
         result=output.label,
@@ -202,9 +206,9 @@ async def predict_visualize(
     inference_service = inference_services[model]
     try:
         output = inference_service.predict(image_bytes)
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Visualization inference failed")
-        raise HTTPException(status_code=500, detail="Visualization inference failed")
+        raise HTTPException(status_code=500, detail="Visualization inference failed") from exc
     
     # Draw bounding boxes if detections found
     from PIL import ImageDraw, ImageFont
