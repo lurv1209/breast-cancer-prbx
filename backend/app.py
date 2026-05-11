@@ -24,14 +24,7 @@ logger = logging.getLogger("uvicorn.error")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "https://breast-cancer-prbx.vercel.app",
-        "https://breast-cancer-prbx-hxzlvk3fh-lurvishs-projects.vercel.app",
-        "https://breast-cancer-prbx-1.onrender.com",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
