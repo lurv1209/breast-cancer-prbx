@@ -100,14 +100,6 @@ The current backend expects:
 
 If you have alternate filenames, update `backend/app.py` in the `_load_model` method.
 
-## Test images
-
-Sample ultrasound images can be placed in the `test_images/` directory.
-These will be served by the backend and accessible via the frontend's "Show Sample Images" section.
-Supported formats: PNG, JPG, JPEG, GIF, BMP.
-
-The frontend will display thumbnails of available test images, allowing users to load them for testing without uploading their own files.
-
 ## Notes for dissertation reproducibility
 
 - Include the full repository on GitHub with this README and the `backend/models/` filenames.
