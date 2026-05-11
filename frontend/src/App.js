@@ -52,7 +52,7 @@ function App() {
           <h1 className="header-title">
             Breast <span>Ultrasound</span>
             <br />
-            Cancer Detection
+            Cancer Detection &amp; Classification
           </h1>
           <p className="header-sub">
             Deep learning · YOLOv8 / Multi-class YOLO
