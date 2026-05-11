@@ -1,6 +1,6 @@
-fastapi
-uvicorn
-pillow
-python-multipart
-torch
-ultralytics
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pillow==10.1.0
+python-multipart==0.0.6
+torch==2.0.1
+ultralytics==8.0.239

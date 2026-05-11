@@ -1,0 +1,39 @@
+# Git and version control
+.git
+.gitignore
+.github
+
+# Node and frontend
+../frontend
+node_modules
+
+# Python cache and virtual environments
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.venv
+venv
+env
+
+# IDE and editors
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+.env.local
+
+# Test and documentation files
+*.md
+test_*.py
+tests/
+.pytest_cache
+
+# Render and deployment files
+.buildpacks
+build.log

@@ -3,26 +3,52 @@
 ## Overview
 This app consists of:
 - **Frontend**: React app deployed on Vercel
-- **Backend**: FastAPI app deployed on Render
+- **Backend**: FastAPI app deployed on Render (with Docker optimization)
 
-## Backend Deployment (Render)
+## Backend Deployment (Render with Docker)
 
-### 1. Create a new Render Web Service
+### 1. Prerequisites
+- GitHub repository connected to Render
+- Docker support enabled on Render
+
+### 2. Create a new Render Web Service
 1. Go to [Render Dashboard](https://dashboard.render.com)
 2. Click "New" → "Web Service"
 3. Connect your GitHub repository
 4. Configure the service:
    - **Name**: `breast-cancer-backend`
-   - **Runtime**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn app:app --host 0.0.0.0 --port $PORT`
+   - **Runtime**: `Docker`
+   - **Build Command**: Leave empty (Dockerfile handles it)
+   - **Start Command**: Leave empty (Dockerfile handles it)
+   - **Docker Path**: `./backend/Dockerfile`
 
-### 2. Environment Variables
+### 3. Environment Variables
 Set these in Render dashboard:
 - `PYTHON_VERSION`: `3.11`
 
-### 3. Deploy
-Click "Create Web Service" - Render will build and deploy automatically.
+### 4. Deploy
+Click "Create Web Service" - Render will build the Docker image and deploy automatically.
+
+## What's Optimized
+
+### Docker Setup
+- **Multi-stage builds** reduce image size
+- **Slim Python 3.11 base image** (smaller than default)
+- **System-level dependencies** installed in one layer
+- **Health checks** built in
+- **Build cache** for faster redeploys
+- **.dockerignore** excludes unnecessary files
+
+### Requirements
+- **Pinned versions** for reproducibility and faster installs
+- **Optimized dependencies** reduce build time
+
+### Why Docker on Render is Better
+1. **Faster builds** - Docker caching speeds up redeploys
+2. **Smaller footprint** - Slim image uses less disk space
+3. **Predictable environment** - Exact same setup locally and on Render
+4. **Better cold starts** - Pre-built image avoids runtime package installs
+5. **Easier debugging** - Same Dockerfile runs everywhere
 
 ## Frontend Deployment (Vercel)
 
