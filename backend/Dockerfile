@@ -10,6 +10,14 @@ ENV PYTHONUNBUFFERED=1 \
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libopenblas0 \
+    libxcb1 \
+    libxrender1 \
+    libsm6 \
+    libxext6 \
+    libxkbcommon0 \
+    libfontconfig1 \
+    libdbus-1-3 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
