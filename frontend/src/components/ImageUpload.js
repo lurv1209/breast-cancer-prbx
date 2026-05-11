@@ -411,33 +411,6 @@ function ImageUpload() {
         <span className="drop-tag">PNG · JPEG · DICOM-derived</span>
       </div>
 
-      {/* View toggle */}
-      {doneCount > 0 && (
-        <div className="summary-bar">
-          <span className="summary-count">View</span>
-          <div className="summary-actions">
-            <button
-              className={`view-btn ${viewMode === "original" ? "active" : ""}`}
-              onClick={() => setViewMode("original")}
-            >
-              Original
-            </button>
-            <button
-              className={`view-btn ${viewMode === "annotated" ? "active" : ""}`}
-              onClick={() => setViewMode("annotated")}
-            >
-              With Bounding Box
-            </button>
-            <button
-              className={`view-btn ${viewMode === "table" ? "active" : ""}`}
-              onClick={() => setViewMode("table")}
-            >
-              Table View
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Summary bar */}
       {items.length > 0 && (
         <div className="summary-bar">
@@ -477,6 +450,33 @@ function ImageUpload() {
             )}
             <button className="reset-btn" onClick={reset} disabled={running}>
               ✕ Clear all
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* View toggle */}
+      {doneCount > 0 && (
+        <div className="summary-bar">
+          <span className="summary-count">View</span>
+          <div className="summary-actions">
+            <button
+              className={`view-btn ${viewMode === "original" ? "active" : ""}`}
+              onClick={() => setViewMode("original")}
+            >
+              Original
+            </button>
+            <button
+              className={`view-btn ${viewMode === "annotated" ? "active" : ""}`}
+              onClick={() => setViewMode("annotated")}
+            >
+              With Bounding Box
+            </button>
+            <button
+              className={`view-btn ${viewMode === "table" ? "active" : ""}`}
+              onClick={() => setViewMode("table")}
+            >
+              Table View
             </button>
           </div>
         </div>
